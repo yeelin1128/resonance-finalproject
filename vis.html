@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>弦外之境．無線共振 Resonance Beyond Strings </title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <script src="/socket.io/socket.io.js" onerror="handleSocketError()"></script>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f7f3eb; overflow: hidden; }
+    #canvas-container { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <script>
+    let socket = null;
+    let socketLoaded = false;
+    
+    if (typeof io !== 'undefined') {
+      socket = io();
+      socketLoaded = true;
+    }
+
+    function handleSocketError() {
+      console.warn("Socket.io 載入失敗。請確保您是透過 http://localhost:3000/vis 開啟此頁面。");
+    }
+
+    let usersData = {};
+    let handDrawnParticles = []; 
+    let handDrawnSpots = {};     
+    
+    // 吉他動態數據
+    let guitarEnv = 0;
+    let muteTimer = 0;
+
+    // 日系粉彩消光調色盤 (淡櫻紅、芥末黃、若竹綠、縹緲青藍、秋葉焦糖)
+    const softColors = [
+      '#e59b92', // 淡櫻紅
+      '#dfbc88', // 芥末米黃
+      '#a2b58c', // 淺茶竹綠
+      '#8faab0', // 縹青藍
+      '#c9a38f'  // 暖秋褐
+    ];
+
+    if (socketLoaded && socket) {
+      socket.on('update_users', (data) => { usersData = data; });
+      socket.on('user_left', (id) => { 
+        delete usersData[id]; 
+        delete handDrawnSpots[id];
+      });
+      
+      socket.on('guitar_update', (guitar) => {
+        guitarEnv = guitar.env;
+        if (guitar.mute > 0) {
+          muteTimer = 22; // 觸發全屏破墨震盪
+        }
+      });
+    }
+
+    function setup() {
+      const canvas = createCanvas(windowWidth, windowHeight);
+      canvas.parent('canvas-container');
+      // 日系溫暖手捏紙張底色
+      background(247, 243, 235);
+      pixelDensity(window.devicePixelRatio || 1);
+    }
+
+    function draw() {
+      // 模擬水彩紙吸水乾燥效果：極度輕透的白色疊加，留存之前的水彩墨影
+      let paperAbsorption = map(guitarEnv, 0, 1, 15, 8);
+      background(247, 243, 235, paperAbsorption);
+
+      // 繪製微弱的手繪纖維質感
+      drawWashiTexture();
+
+      if (!socketLoaded) {
+        drawDebugWarning();
+        return;
+      }
+
+      // 1. 繪製「多重色鉛筆素描質感」的吉他波動主弦
+      drawZenGuitarString();
+
+      // 2. 處理悶音全屏震落色粉特效
+      let shakeX = 0, shakeY = 0;
+      if (muteTimer > 0) {
+        shakeX = random(-6, 6) * (muteTimer / 22);
+        shakeY = random(-6, 6) * (muteTimer / 22);
+        muteTimer--;
+      }
+
+      push();
+      translate(shakeX, shakeY);
+
+      // 解析與平滑轉換觀眾極座標
+      let mappedUsers = [];
+      for (let id in usersData) {
+        let user = usersData[id];
+        let angle = user.x * TWO_PI;
+        let radius = user.y * (min(width, height) * 0.44);
+        
+        let screenX = width / 2 + cos(angle) * radius;
+        let screenY = height / 2 + sin(angle) * radius;
+
+        if (muteTimer > 0) {
+          screenX = lerp(screenX, width / 2, 0.25);
+          screenY = lerp(screenY, height / 2, 0.25);
+        }
+
+        if (!handDrawnSpots[id]) {
+          handDrawnSpots[id] = { curX: screenX, curY: screenY, col: getAssignedSoftColor(id) };
+        } else {
+          // 平滑運動，呈現柔軟的漂浮感
+          handDrawnSpots[id].curX = lerp(handDrawnSpots[id].curX, screenX, 0.08);
+          handDrawnSpots[id].curY = lerp(handDrawnSpots[id].curY, screenY, 0.08);
+        }
+
+        mappedUsers.push({ 
+          id: id, 
+          x: handDrawnSpots[id].curX, 
+          y: handDrawnSpots[id].curY, 
+          color: handDrawnSpots[id].col 
+        });
+      }
+
+      // 3. 繪製手繪色鉛筆共鳴弦
+      drawSketchyResonanceLines(mappedUsers);
+
+      // 4. 繪製觀眾的「半透明水彩擴散渲染 (Soft Watercolor Blob)」
+      mappedUsers.forEach(user => {
+        let c = color(user.color);
+
+        // 生成溫潤的水彩渲染粒子
+        let bleedRate = map(guitarEnv, 0, 1, 0.4, 0.85);
+        if (random(1) < bleedRate) {
+          handDrawnParticles.push(new SoftWatercolorBlob(user.x, user.y, c, guitarEnv));
+        }
+
+        // 當吉他大聲時，甩出點點細碎的「水彩飛濺 (Watercolor Splatters)」
+        if (guitarEnv > 0.55 && random(1) < 0.18) {
+          for (let i = 0; i < 2; i++) {
+            handDrawnParticles.push(new MicroPencilSplatter(user.x, user.y, c, guitarEnv));
+          }
+        }
+
+        // 墨心：水彩重疊後沉澱的深色手描中心
+        fill(red(c) * 0.85, green(c) * 0.82, blue(c) * 0.78, 180);
+        noStroke();
+        ellipse(user.x, user.y, 8 + guitarEnv * 10);
+      });
+
+      // 更新與繪製所有手繪粒子
+      for (let i = handDrawnParticles.length - 1; i >= 0; i--) {
+        handDrawnParticles[i].update();
+        handDrawnParticles[i].show();
+        if (handDrawnParticles[i].isFinished()) {
+          handDrawnParticles.splice(i, 1);
+        }
+      }
+      pop();
+
+      // 5. 悶音瞬間的破墨潑紅視覺（暖珊瑚色薄霧）
+      if (muteTimer > 0) {
+        fill(201, 122, 100, map(muteTimer, 0, 22, 0, 45));
+        rect(0, 0, width, height);
+      }
+
+      // 日風優雅極簡手寫排版
+      drawJapaneseTypography(mappedUsers.length);
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+
+    // 將 Socket ID 轉換為溫和的粉彩色系
+    function getAssignedSoftColor(id) {
+      let hash = 0;
+      for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      let index = Math.abs(hash) % softColors.length;
+      return softColors[index];
+    }
+
+    // 繪製「多重色鉛筆、不對稱素描筆鋒」的吉他主弦
+    function drawZenGuitarString() {
+      noFill();
+      
+      let baseStringColor = color(107, 92, 80); // 暖深褐
+      let stringOpacity = map(guitarEnv, 0, 1, 60, 160);
+      let baseWeight = map(guitarEnv, 0, 1, 0.8, 4.5); 
+      
+      // 使用 3 層手稿草圖重疊，模擬毛筆或鉛筆重複描摹的「手繪筆觸」
+      for (let layer = 0; layer < 3; layer++) {
+        let offset = layer * 1.5;
+        let layerWeight = baseWeight * (0.9 - layer * 0.2);
+        
+        stroke(red(baseStringColor), green(baseStringColor), blue(baseStringColor), stringOpacity / (layer + 1));
+        strokeWeight(layerWeight);
+
+        // 如果吉他音量大，主弦會抖落細微的「粉彩墨粉」
+        if (guitarEnv > 0.4 && random(1) < 0.12) {
+          let particleX = random(width * 0.2, width * 0.8);
+          let waveY = calculateWaveY(particleX);
+          handDrawnParticles.push(new InkDustParticle(particleX, waveY, color('#c97a64')));
+        }
+
+        beginShape();
+        for (let x = 0; x <= width; x += 8) {
+          let y = calculateWaveY(x, offset);
+          
+          // 當吉他大聲時，模擬粉彩筆在粗糙紙面滑過的「飛白碎紋」 (隨機跳過頂點)
+          if (guitarEnv > 0.65 && noise(x * 0.04, frameCount * 0.1) > 0.82) {
+            endShape();
+            beginShape();
+            continue;
+          }
+          vertex(x, y);
+        }
+        endShape();
+      }
+    }
+
+    // 計算手繪波動 Y 軸位置，融入不對稱擺動
+    function calculateWaveY(x, offset = 0) {
+      let distanceToCenter = dist(x, height / 2, width / 2, height / 2);
+      let dampening = map(distanceToCenter, 0, width / 2, 1, 0);
+      
+      // 物理主波動
+      let wave = sin(x * 0.008 + frameCount * 0.05) * 38 * guitarEnv * dampening;
+      // 揉合手繪隨機抖動
+      let noiseSeep = (noise(x * 0.035, frameCount * 0.12 + offset) - 0.5) * 16 * guitarEnv * dampening;
+      
+      return height / 2 + wave + noiseSeep;
+    }
+
+    // 繪製手繪色鉛筆共鳴弦（像是不對稱的鉛筆草圖連線）
+    function drawSketchyResonanceLines(users) {
+      if (users.length < 2) return;
+
+      for (let i = 0; i < users.length; i++) {
+        for (let j = i + 1; j < users.length; j++) {
+          let u1 = users[i];
+          let u2 = users[j];
+          let d = dist(u1.x, u1.y, u2.x, u2.y);
+
+          let maxResonanceDist = min(width, height) * 0.38;
+          if (d < maxResonanceDist) {
+            let opacity = map(d, 0, maxResonanceDist, 160, 0);
+            opacity = opacity * (0.3 + guitarEnv * 1.5);
+            
+            // 暖茶褐色色鉛筆
+            stroke(107, 92, 80, opacity);
+            strokeWeight(map(d, 0, maxResonanceDist, 2.2, 0.4) * (1 + guitarEnv * 1.2));
+            
+            let midX = (u1.x + u2.x) / 2;
+            let midY = (u1.y + u2.y) / 2;
+            
+            let offset = sin(frameCount * 0.12 + d) * 6 * guitarEnv;
+            
+            noFill();
+            beginShape();
+            vertex(u1.x, u1.y);
+            // 隨機微小偏移，畫出抖抖的草圖線
+            quadraticVertex(midX + offset + random(-1.5, 1.5), midY + offset + random(-1.5, 1.5), u2.x, u2.y);
+            endShape();
+          }
+        }
+      }
+      noStroke();
+    }
+
+    // 紙張質地，帶有細緻的日式雜質顆粒與不對稱大暈染
+    function drawWashiTexture() {
+      // 繪製微弱的手捏感背景大斑駁
+      noStroke();
+      fill(235, 225, 215, 6);
+      ellipse(width/2, height/2, width * 0.65, height * 0.65);
+    }
+
+    // 日風清雅手稿排版 (Zakka 雜誌式)
+    function drawJapaneseTypography(userCount) {
+      push();
+      // 精緻手捏小紅印落款
+      rectMode(CORNER);
+      fill(201, 122, 100, 200); // 硃砂紅
+      ellipse(38, 33, 11, 11);  
+      
+      fill(107, 92, 80, 180); // 暖深茶
+      textFont('sans-serif', 12);
+      textStyle(BOLD);
+      textAlign(LEFT, TOP);
+      text('Resonance beyond strings  //  弦外之境', 55, 28);
+      
+      // 細長虛線分割線
+      stroke(107, 92, 80, 50);
+      strokeWeight(0.5);
+      line(35, 50, 260, 50);
+      
+      noStroke();
+      textStyle(NORMAL);
+      fill(138, 122, 110, 140);
+      textFont('sans-serif', 9);
+      text('ACTIVE SEATS  //  ' + userCount.toString().padStart(2, '0'), 35, 59);
+      text('AMPLITUDE     //  ' + Math.round(guitarEnv * 100).toString().padStart(3, '0') + ' %', 35, 74);
+
+      if (muteTimer > 0) {
+        fill(201, 122, 100);
+        text('● ENCOUNTER : SILENT STRING', 35, 92);
+      }
+      pop();
+    }
+
+    // 1. 半透明日式水彩渲染 (Soft Watercolor Blob)
+    class SoftWatercolorBlob {
+      constructor(x, y, col, env) {
+        this.x = x + random(-2, 2);
+        this.y = y + random(-2, 2);
+        
+        // 渲染跟隨平穩漂移，保持手繪的悠閒慢步調
+        this.noiseOffset = random(100);
+        this.alpha = 110; 
+        this.size = random(20, 42) * (1 + env * 0.8);
+        this.color = col;
+        this.speed = random(0.2, 0.6) * (1 + env);
+      }
+
+      update() {
+        let angle = noise(this.x * 0.005 + this.noiseOffset, this.y * 0.005, frameCount * 0.005) * TWO_PI * 1.5;
+        this.x += cos(angle) * this.speed;
+        this.y += sin(angle) * this.speed;
+
+        // 向外慢慢膨脹、化開
+        this.size += map(guitarEnv, 0, 1, 0.3, 1.2);
+        this.alpha -= map(guitarEnv, 0, 1, 1.0, 2.4);
+      }
+
+      show() {
+        if (this.alpha <= 0) return;
+        
+        push();
+        translate(this.x, this.y);
+        
+        // 重疊 4 層不規則毛邊圓，模擬水份在粗糙水彩紙面乾燥留下的「水痕外圈 (Bleed Edge)」
+        let layers = 4;
+        let baseCol = this.color;
+        
+        for (let i = 0; i < layers; i++) {
+          let layerAlpha = (this.alpha / layers) * (layers - i) * 0.75;
+          let layerSize = this.size * (1 + i * 0.16);
+          
+          fill(red(baseCol), green(baseCol), blue(baseCol), layerAlpha);
+          noStroke();
+          
+          // 手繪抖抖毛邊算法
+          beginShape();
+          for (let a = 0; a < TWO_PI; a += 0.35) {
+            let offset = (noise(cos(a) * 0.7 + this.noiseOffset, sin(a) * 0.7 + frameCount * 0.015) - 0.5) * (layerSize * 0.14);
+            let r = layerSize / 2 + offset;
+            vertex(cos(a) * r, sin(a) * r);
+          }
+          endShape(CLOSE);
+        }
+        pop();
+      }
+
+      isFinished() { return this.alpha <= 0; }
+    }
+
+    // 2. 微型色鉛筆落下的粉末 (Micro Pencil Splatter)
+    class MicroPencilSplatter {
+      constructor(x, y, col, env) {
+        this.x = x;
+        this.y = y;
+        let angle = random(TWO_PI);
+        let speed = random(1.2, 6.0) * (0.4 + env * 1.4);
+        this.vx = cos(angle) * speed;
+        this.vy = sin(angle) * speed;
+        this.alpha = 170;
+        this.size = random(1.5, 3.5);
+        this.color = col;
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.85;
+        this.vy *= 0.85;
+        this.alpha -= 3.5;
+        this.size += 0.02; 
+      }
+
+      show() {
+        let c = this.color;
+        // 稍微帶點鉛筆顆粒質地
+        fill(red(c) * 0.9, green(c) * 0.85, blue(c) * 0.8, this.alpha);
+        noStroke();
+        ellipse(this.x, this.y, this.size, this.size * 1.1);
+      }
+
+      isFinished() { return this.alpha <= 0; }
+    }
+
+    // 3. 琴弦震動落下的金粉顆粒
+    class InkDustParticle {
+      constructor(x, y, col) {
+        this.x = x;
+        this.y = y;
+        this.vx = random(-0.4, 0.4);
+        this.vy = random(0.2, 1.2); 
+        this.alpha = 150;
+        this.size = random(1.2, 2.6);
+        this.color = col;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.alpha -= 2.0;
+      }
+      show() {
+        let c = this.color;
+        fill(red(c), green(c), blue(c), this.alpha);
+        noStroke();
+        ellipse(this.x, this.y, this.size);
+      }
+      isFinished() { return this.alpha <= 0; }
+    }
+
+    // 日式手繪風偵錯畫面
+    function drawDebugWarning() {
+      rectMode(CENTER);
+      fill(250, 247, 242, 245);
+      stroke(107, 92, 80, 40);
+      strokeWeight(1.5);
+      rect(width/2, height/2, 530, 290, 12); // 手繪捏角微圓弧
+
+      // 紅印章
+      fill(201, 122, 100, 200);
+      ellipse(width/2 - 215, height/2 - 80, 12, 12);
+
+      noStroke();
+      fill('#6b5c50');
+      textFont('sans-serif', 14);
+      textStyle(BOLD);
+      textAlign(CENTER, CENTER);
+      text('SYSTEM  //  RESONANCE_SETUP_NOT_FOUND', width/2 + 15, height/2 - 80);
+
+      fill(138, 122, 110, 160);
+      textStyle(NORMAL);
+      textSize(12);
+      leading(22);
+      let warningText = 
+        "系統未能順利建立 WebSocket 雙向連線。\\n\\n" +
+        "【 請遵循以下和風指引 】\\n" +
+        "1. 請開啟終端機，執行 [ node server.js ] 啟動系統中樞。\\n" +
+        "2. 請勿直接在資料夾雙擊開啟本檔案。請在網址列輸入：\\n" +
+        "👉 http://localhost:3000/vis";
+      text(warningText, width/2, height/2 + 30);
+    }
+  </script>
+</body>
+</html>

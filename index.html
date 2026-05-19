@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>弦外之境．無線共振 Resonance Beyond Strings</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    /* 日系手繪字體與柔和米色調 */
+    body {
+      margin: 0; padding: 0;
+      background-color: #f7f3eb; color: #4a423a; /* 暖調生成色與炭茶褐 */
+      font-family: "PingFang TC", "STHeitiTC-Light", "Comic Sans MS", cursive, sans-serif;
+      overflow: hidden; user-select: none; -webkit-user-select: none;
+      transition: background-color 0.3s ease;
+    }
+    .container {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100vh; width: 100vw; box-sizing: border-box; padding: 20px;
+      background: radial-gradient(circle at center, #fbfaf7 0%, #f4eade 100%);
+    }
+    .title-section { text-align: center; margin-bottom: 25px; }
+    h1 {
+      font-size: 1.3rem; margin: 0; letter-spacing: 2px;
+      color: #5c4e43; /* 烤橡木茶色 */
+      text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
+    }
+    p { font-size: 0.8rem; color: #8a7a6e; margin: 8px 0 0 0; letter-spacing: 1px; }
+    
+    /* 手繪質感黑膠外框： wobbly border 創造手工感 */
+    .vinyl-wrapper {
+      position: relative;
+      width: 82vw;
+      height: 82vw;
+      max-width: 310px;
+      max-height: 310px;
+      border-radius: 48% 52% 51% 49% / 50% 48% 52% 50%; /* 不規則手捏感 */
+      border: 3px solid #6b5c50;
+      background: #fdfbf7;
+      box-shadow: 4px 6px 15px rgba(107, 92, 80, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: gentle-float 6s ease-in-out infinite alternate;
+    }
+
+    /* 手繪進度條 */
+    .duration-svg {
+      position: absolute;
+      width: 102%;
+      height: 102%;
+      top: -1%; left: -1%;
+      transform: rotate(-90deg);
+      pointer-events: none;
+    }
+    .duration-track {
+      fill: none;
+      stroke: rgba(107, 92, 80, 0.04);
+      stroke-width: 3;
+    }
+    .duration-progress {
+      fill: none;
+      stroke: #d49a80; /* 珊瑚暖橙色 */
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-dasharray: 1000;
+      stroke-dashoffset: 1000;
+      transition: stroke-dashoffset 0.15s linear;
+    }
+
+    /* 不規則手畫觸控盤 */
+    #pad {
+      position: relative;
+      width: 92%;
+      height: 92%;
+      background: #fbfaf5;
+      border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+      border: 1px dashed rgba(107, 92, 80, 0.3);
+      touch-action: none;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 手繪感同心圓 */
+    .vinyl-groove {
+      position: absolute;
+      border-radius: 49% 51% 50% 50% / 50% 49% 51% 50%;
+      border: 1.5px solid rgba(107, 92, 80, 0.12);
+      pointer-events: none;
+      box-sizing: border-box;
+      transform-origin: center;
+      transition: transform 0.08s ease;
+    }
+
+    /* 唱片中心標籤 - 像個手工小扣子 */
+    .vinyl-center {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      background: #ebdccb;
+      border: 2px solid #6b5c50;
+      border-radius: 52% 48% 47% 53% / 49% 52% 48% 51%;
+      pointer-events: none;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vinyl-center-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #6b5c50;
+      border-radius: 50%;
+    }
+
+    /* 溫馨手寫手繪感游標 */
+    #pointer {
+      position: absolute;
+      width: 38px;
+      height: 38px;
+      border-radius: 47% 53% 50% 50% / 51% 48% 52% 49%;
+      background: rgba(212, 154, 128, 0.18);
+      border: 2px solid #c97a64;
+      box-shadow: 2px 4px 8px rgba(201, 122, 100, 0.15);
+      transform: translate(-50%, -50%) scale(1);
+      top: 50%; left: 50%;
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    /* 游標內小草莓點 */
+    #pointer::after {
+      content: '';
+      width: 7px;
+      height: 7px;
+      background-color: #c97a64;
+      border-radius: 50%;
+    }
+
+    .status-bar {
+      margin-top: 30px;
+      font-size: 0.8rem;
+      color: #8a7a6e;
+      display: flex;
+      gap: 20px;
+      letter-spacing: 0.5px;
+    }
+    #conn-status { color: #c97a64; font-weight: bold; }
+
+    /* 悶音觸發時的日系手感微閃 (溫暖番茄紅) */
+    .mute-flash {
+      background: #f7e1dd !important;
+      border-color: #c97a64 !important;
+    }
+
+    /* 微幅漂浮動畫，增加手繪空氣感 */
+    @keyframes gentle-float {
+      0% { transform: translateY(0px) rotate(0deg); }
+      100% { transform: translateY(-4px) rotate(1.5deg); border-radius: 50% 48% 52% 48% / 48% 52% 48% 52%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="bg-container">
+    <div class="title-section">
+      <h1>弦外之境．無線共振 Resonance Beyond Strings</h1>
+      <p>輕觸暖木黑膠 ｜ 感受撥弦與空氣的揉捏</p>
+    </div>
+
+    <!-- 唱片主容器 -->
+    <div class="vinyl-wrapper">
+      <!-- 圓圈時值進度條 -->
+      <svg class="duration-svg" viewBox="0 0 100 100">
+        <circle class="duration-track" cx="50" cy="50" r="47" />
+        <circle class="duration-progress" id="duration-ring" cx="50" cy="50" r="47" />
+      </svg>
+
+      <!-- 黑膠唱片觸控區 -->
+      <div id="pad">
+        <!-- 同心圓手繪軌道 -->
+        <div class="vinyl-groove" style="width: 88%; height: 88%;"></div>
+        <div class="vinyl-groove" style="width: 72%; height: 72%;"></div>
+        <div class="vinyl-groove" style="width: 56%; height: 56%;"></div>
+        <div class="vinyl-groove" style="width: 40%; height: 40%;"></div>
+        <div class="vinyl-groove" style="width: 24%; height: 24%;"></div>
+        
+        <!-- 唱片小扣子 -->
+        <div class="vinyl-center">
+          <div class="vinyl-center-dot"></div>
+        </div>
+
+        <!-- 溫馨手繪游標 -->
+        <div id="pointer"></div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span id="conn-status">連線中...</span>
+      <span id="guitar-signal">琴弦振幅: 0%</span>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const pad = document.getElementById('pad');
+    const pointer = document.getElementById('pointer');
+    const connStatus = document.getElementById('conn-status');
+    const guitarSignal = document.getElementById('guitar-signal');
+    const durationRing = document.getElementById('duration-ring');
+    const bgContainer = document.getElementById('bg-container');
+    const grooves = document.querySelectorAll('.vinyl-groove');
+
+    let myColor = '#c97a64';
+    let isTouching = false;
+    
+    // SVG 圓周長為 2 * PI * r = 2 * 3.14159 * 47 ≈ 295.3
+    const circumference = 295.3;
+    durationRing.style.strokeDasharray = circumference;
+    durationRing.style.strokeDashoffset = circumference;
+
+    socket.on('init', (data) => {
+      myColor = data.color;
+      pointer.style.borderColor = myColor;
+      pointer.style.background = myColor + '20'; // 12% 透明度
+      pointer.style.boxShadow = '2px 4px 10px ' + myColor + '30';
+      connStatus.textContent = '● 共鸣中';
+    });
+
+    socket.on('disconnect', () => {
+      connStatus.textContent = '○ 斷開';
+      connStatus.style.color = '#c97a64';
+    });
+
+    // 雙向資料監聽
+    socket.on('guitar_update', (guitar) => {
+      const intensity = guitar.env; 
+      
+      // 1. 吉他即時音量 -> 手機背景隨音波微微亮起 (日系和煦陽光感)
+      bgContainer.style.background = `radial-gradient(circle at center, 
+        rgba(251, 250, 247, 1) 0%, 
+        rgba(${lerp(244, 250, intensity)}, ${lerp(234, 240, intensity)}, ${lerp(222, 210, intensity)}, 1) 100%)`;
+
+      // 同心圓受音浪推擠產生不規則形變
+      grooves.forEach((groove, idx) => {
+        const bounce = 1 + (intensity * 0.1 * (5 - idx));
+        groove.style.transform = `scale(${bounce})`;
+        groove.style.borderColor = `rgba(107, 92, 80, ${0.12 + intensity * 0.15})`;
+      });
+
+      // 游標與指示器
+      const scale = 1 + (intensity * 0.4);
+      pointer.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      guitarSignal.textContent = `琴弦振幅: ${Math.round(intensity * 100)}%`;
+
+      // 2. 音符時值 -> 時值進度環閉合
+      const durPercent = Math.min(1, guitar.duration / 1000);
+      const offset = circumference - (durPercent * circumference);
+      durationRing.style.strokeDashoffset = offset;
+
+      // 3. 悶音 (Mute) 觸發 -> 手機震動
+      if (guitar.mute > 0) {
+        triggerHapticFeedback();
+      }
+    });
+
+    function lerp(start, end, amt) {
+      return (1 - amt) * start + amt * end;
+    }
+
+    function triggerHapticFeedback() {
+      if (navigator.vibrate) {
+        navigator.vibrate([40, 20]); // 柔和一聲震動
+      }
+
+      // 手機畫面閃動 (日系茶色悶音閃爍)
+      pad.classList.add('mute-flash');
+      setTimeout(() => {
+        pad.classList.remove('mute-flash');
+      }, 150);
+    }
+
+    function handleMove(e) {
+      const rect = pad.getBoundingClientRect();
+      let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = clientX - centerX;
+      const dy = clientY - centerY;
+      const radius = rect.width / 2;
+
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > radius) {
+        dist = radius;
+      }
+
+      const angle = (Math.atan2(dy, dx) + Math.PI) / (Math.PI * 2); 
+      const radialRatio = dist / radius; 
+
+      const normX = (clientX - rect.left) / rect.width;
+      const normY = (clientY - rect.top) / rect.height;
+
+      pointer.style.left = (normX * 100) + '%';
+      pointer.style.top = (normY * 100) + '%';
+
+      socket.emit('move', { x: angle, y: radialRatio });
+    }
+
+    pad.addEventListener('touchstart', (e) => { isTouching = true; handleMove(e); });
+    pad.addEventListener('touchmove', (e) => { if (isTouching) handleMove(e); });
+    pad.addEventListener('touchend', () => { isTouching = false; });
+    pad.addEventListener('mousedown', (e) => { isTouching = true; handleMove(e); });
+    window.addEventListener('mousemove', (e) => { if (isTouching) handleMove(e); });
+    window.addEventListener('mouseup', () => { isTouching = false; });
+  </script>
+</body>
+</html>
