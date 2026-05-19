@@ -310,6 +310,46 @@
         fill(201, 122, 100);
         text('● ENCOUNTER : SILENT STRING', 35, 92);
       }
+      // ==========================================
+      // 右下角新增：日系手繪風手機 UI 連結導引
+      // ==========================================
+      push();
+      let boxW = 280;
+      let boxH = 85;
+      let posX = width - boxW - 35; // 距離右邊 35px
+      let posY = height - boxH - 35; // 距離下邊 35px
+
+      // 1. 手捏感淡米色半透明襯底框
+      rectMode(CORNER);
+      fill(250, 247, 242, 190);
+      stroke(107, 92, 80, 40);
+      strokeWeight(1);
+      // 加上微小的隨機抖動，模擬手工裁切紙張邊緣
+      rect(posX + random(-0.5, 0.5), posY + random(-0.5, 0.5), boxW, boxH, 4);
+
+      // 2. 右側裝飾性手繪小灰鈕（像手工書籤扣）
+      fill(138, 122, 110, 80);
+      noStroke();
+      ellipse(posX + 15, posY + boxH/2, 5, 5);
+
+      // 3. 說明文字（極簡日風排版）
+      fill(107, 92, 80, 200); // 暖深茶色
+      textFont('sans-serif', 11);
+      textStyle(BOLD);
+      textAlign(LEFT, TOP);
+      text('JOIN THE RESONANCE  //  加入共鳴', posX + 32, posY + 16);
+
+      // 4. 你的 Vercel 手機端連結網址
+      fill(201, 122, 100, 220); // 硃砂暖紅
+      textStyle(NORMAL);
+      textFont('monospace', 11); // 使用等寬字體讓網址更易讀
+      // ⚠️ 請把下面這行改成你實際的 Vercel 網址
+      text('resonance-finalproject.vercel.app', posX + 32, posY + 36);
+
+      // 5. 提示小字
+      fill(138, 122, 110, 130);
+      textFont('sans-serif', 9);
+      text('▲ scan code or enter url on your mobile', posX + 32, posY + 54);
       pop();
     }
 
